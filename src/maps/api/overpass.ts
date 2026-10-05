@@ -45,41 +45,61 @@ export const getOverpassData = async (
     const fallbackBaseUrls = allHostUrls.filter((h) => h !== primaryBaseUrl);
 
     const primaryUrl = `${primaryBaseUrl}?data=${encodedQuery}`;
-    let response = await cacheFetch(primaryUrl, loadingText, cacheType);
+    let response: Response | undefined;
+    let lastError: unknown;
 
-    if (!response.ok) {
-        for (const fallbackBase of fallbackBaseUrls) {
+    const requestFromHost = async (baseUrl: string, retries: number) => {
+        for (let attempt = 0; attempt <= retries; attempt++) {
             try {
-                const fallbackResponse = await cacheFetch(
-                    `${fallbackBase}?data=${encodedQuery}`,
+                const result = await cacheFetch(
+                    `${baseUrl}?data=${encodedQuery}`,
                     loadingText,
                     cacheType,
                 );
-                if (fallbackResponse.ok) {
-                    const cache = await determineCache(cacheType);
-                    await cache.put(primaryUrl, fallbackResponse.clone());
-                    response = fallbackResponse;
-                    break;
-                }
-            } catch {
-                toast.error(
-                    `Could not load data from Overpass: ${response.status} ${response.statusText}`,
-                    { toastId: "overpass-error" },
+                response = result;
+                if (result.ok) return result;
+            } catch (error) {
+                lastError = error;
+            }
+
+            if (attempt < retries) {
+                await new Promise((resolve) =>
+                    setTimeout(resolve, 500 * (attempt + 1)),
                 );
-                return { elements: [] };
+            }
+        }
+        return undefined;
+    };
+
+    let successfulResponse = await requestFromHost(primaryBaseUrl, 1);
+
+    if (!successfulResponse) {
+        for (const fallbackBase of fallbackBaseUrls) {
+            successfulResponse = await requestFromHost(fallbackBase, 0);
+            if (successfulResponse) {
+                try {
+                    const cache = await determineCache(cacheType);
+                    await cache.put(primaryUrl, successfulResponse.clone());
+                } catch {
+                    // The fallback response is still usable without caching.
+                }
+                break;
             }
         }
     }
 
-    if (!response.ok) {
-        toast.error(
-            `Could not load data from Overpass: ${response.status} ${response.statusText}`,
-            { toastId: "overpass-error" },
-        );
+    if (!successfulResponse) {
+        const errorMessage = response
+            ? `Could not load data from Overpass: ${response.status} ${response.statusText}`
+            : "Could not connect to any Overpass server";
+        if (lastError) console.error("Overpass request failed:", lastError);
+        toast.error(errorMessage, {
+            toastId: "overpass-error",
+        });
         return { elements: [] };
     }
 
-    const data = await response.json();
+    const data = await successfulResponse.json();
     return data;
 };
 
