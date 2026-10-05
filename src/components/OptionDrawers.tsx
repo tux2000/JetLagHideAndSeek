@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/drawer";
 import {
     additionalMapGeoLocations,
+    additionalMapGeoPolygons,
     allowGooglePlusCodes,
     alwaysUsePastebin,
     animateMapMovements,
@@ -236,7 +237,18 @@ export const OptionDrawers = ({ className }: { className?: string }) => {
                     mapGeoJSON.set(geojson);
                     polyGeoJSON.set(geojson);
                 }
+                additionalMapGeoLocations.set([]);
             }
+
+            additionalMapGeoPolygons.set(
+                (Array.isArray(geojson.additionalMapGeoPolygons)
+                    ? geojson.additionalMapGeoPolygons
+                    : []
+                ).map((area: any, index: number) => ({
+                    ...area,
+                    id: area.id ?? `imported-${index}`,
+                })),
+            );
 
             const incomingPresets =
                 geojson.presets ?? geojson.properties?.presets;

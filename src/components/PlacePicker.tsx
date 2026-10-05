@@ -27,6 +27,9 @@ import { useTutorialStep } from "@/hooks/use-tutorial-step";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
     additionalMapGeoLocations,
+    additionalMapGeoPolygons,
+    drawingQuestionKey,
+    drawAreaIntoPresets,
     isLoading,
     mapGeoJSON,
     mapGeoLocation,
@@ -62,6 +65,9 @@ export const PlacePicker = ({
 }) => {
     const $mapGeoLocation = useStore(mapGeoLocation);
     const $additionalMapGeoLocations = useStore(additionalMapGeoLocations);
+    const $additionalMapGeoPolygons = useStore(additionalMapGeoPolygons);
+    const $drawingQuestionKey = useStore(drawingQuestionKey);
+    const $drawAreaIntoPresets = useStore(drawAreaIntoPresets);
     const $polyGeoJSON = useStore(polyGeoJSON);
     const $isLoading = useStore(isLoading);
     const [open, setOpen] = useState(false);
@@ -123,6 +129,12 @@ export const PlacePicker = ({
                                 ),
                             ]
                                 .map((location) => determineName(location))
+                                .concat(
+                                    $additionalMapGeoPolygons.map(
+                                        (area, index) =>
+                                            `${area.added ? "Drawn area" : "Excluded drawn area"} ${index + 1}`,
+                                    ),
+                                )
                                 .join("; ")
                           : "Hiding bounds"}
                     <ChevronsUpDown className="opacity-50" />
@@ -280,6 +292,78 @@ export const PlacePicker = ({
                             </div>
                         </div>
                     ))}
+                    {$additionalMapGeoPolygons.map((area, index) => (
+                        <div
+                            className="flex justify-between items-center px-3 py-2"
+                            key={area.id}
+                        >
+                            <span className="truncate">
+                                {area.added ? "Drawn area" : "Excluded drawn area"}{" "}
+                                {index + 1}
+                            </span>
+                            <div
+                                className={cn(
+                                    "flex shrink-0 flex-row gap-2 *:stroke-[1.5]",
+                                    $polyGeoJSON && "hidden",
+                                )}
+                            >
+                                {area.added ? (
+                                    <LucidePlusSquare
+                                        className="text-green-700 cursor-pointer"
+                                        onClick={() => {
+                                            if ($isLoading) return;
+                                            additionalMapGeoPolygons.set(
+                                                $additionalMapGeoPolygons.map(
+                                                    (item) =>
+                                                        item.id === area.id
+                                                            ? {
+                                                                  ...item,
+                                                                  added: false,
+                                                              }
+                                                            : item,
+                                                ),
+                                            );
+                                            mapGeoJSON.set(null);
+                                            questions.set([...questions.get()]);
+                                        }}
+                                    />
+                                ) : (
+                                    <LucideMinusSquare
+                                        className="text-red-700 cursor-pointer"
+                                        onClick={() => {
+                                            if ($isLoading) return;
+                                            additionalMapGeoPolygons.set(
+                                                $additionalMapGeoPolygons.map(
+                                                    (item) =>
+                                                        item.id === area.id
+                                                            ? {
+                                                                  ...item,
+                                                                  added: true,
+                                                              }
+                                                            : item,
+                                                ),
+                                            );
+                                            mapGeoJSON.set(null);
+                                            questions.set([...questions.get()]);
+                                        }}
+                                    />
+                                )}
+                                <LucideX
+                                    className="scale-[90%] text-gray-700 cursor-pointer hover:bg-slate-300 rounded-full transition-colors duration-200"
+                                    onClick={() => {
+                                        if ($isLoading) return;
+                                        additionalMapGeoPolygons.set(
+                                            $additionalMapGeoPolygons.filter(
+                                                (item) => item.id !== area.id,
+                                            ),
+                                        );
+                                        mapGeoJSON.set(null);
+                                        questions.set([...questions.get()]);
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    ))}
                 </div>
                 <Separator className="h-[0.5px]" />
                 <Command shouldFilter={false}>
@@ -352,6 +436,25 @@ export const PlacePicker = ({
                     >
                         Clear Questions & Cache
                     </Button>
+                    {!$polyGeoJSON && (
+                        <Button
+                            variant="outline"
+                            className="font-normal hover:bg-slate-200"
+                            disabled={
+                                $isLoading ||
+                                $drawingQuestionKey !== -1 ||
+                                $drawAreaIntoPresets
+                            }
+                            onClick={() => {
+                                drawAreaIntoPresets.set(true);
+                                setOpen(false);
+                            }}
+                        >
+                            {$drawAreaIntoPresets
+                                ? "Draw a polygon on the map now"
+                                : "Draw polygon to combine"}
+                        </Button>
+                    )}
                     {$polyGeoJSON && (
                         <Button
                             variant="outline"

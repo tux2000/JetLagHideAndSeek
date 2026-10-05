@@ -1,8 +1,13 @@
 import * as turf from "@turf/turf";
 
 import { hiderMode } from "@/lib/context";
-import { arcBuffer, arcDistance, modifyMapData } from "@/maps/geo-utils";
+import { modifyMapData } from "@/maps/geo-utils";
 import type { RadiusQuestion } from "@/maps/schema";
+
+const radiusCircle = (question: RadiusQuestion) =>
+    turf.circle([question.lng, question.lat], question.radius, {
+        units: question.unit,
+    });
 
 export const adjustPerRadius = async (
     question: RadiusQuestion,
@@ -10,14 +15,7 @@ export const adjustPerRadius = async (
 ) => {
     if (mapData === null) return;
 
-    const point = turf.point([question.lng, question.lat]);
-    const circle = await arcBuffer(
-        turf.featureCollection([point]),
-        question.radius,
-        question.unit,
-    );
-
-    return modifyMapData(mapData, circle, question.within);
+    return modifyMapData(mapData, radiusCircle(question), question.within);
 };
 
 export const hiderifyRadius = async (question: RadiusQuestion) => {
@@ -26,10 +24,10 @@ export const hiderifyRadius = async (question: RadiusQuestion) => {
         return question;
     }
 
-    const distance = await arcDistance(
+    const distance = turf.distance(
         turf.point([question.lng, question.lat]),
         turf.point([$hiderMode.longitude, $hiderMode.latitude]),
-        question.unit,
+        { units: question.unit },
     );
 
     if (distance <= question.radius) {
@@ -42,12 +40,5 @@ export const hiderifyRadius = async (question: RadiusQuestion) => {
 };
 
 export const radiusPlanningPolygon = async (question: RadiusQuestion) => {
-    const point = turf.point([question.lng, question.lat]);
-    const circle = await arcBuffer(
-        turf.featureCollection([point]),
-        question.radius,
-        question.unit,
-    );
-
-    return turf.polygonToLine(circle);
+    return turf.polygonToLine(radiusCircle(question));
 };

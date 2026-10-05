@@ -25,6 +25,18 @@ export const safeUnion = (input: FeatureCollection<Polygon | MultiPolygon>) => {
     throw new Error("No features");
 };
 
+export const combineAreaPolygons = (
+    included: FeatureCollection<Polygon | MultiPolygon>,
+    excluded: FeatureCollection<Polygon | MultiPolygon>,
+) => {
+    const includedArea = safeUnion(included);
+    if (excluded.features.length === 0) return includedArea;
+
+    return turf.difference(
+        turf.featureCollection([includedArea, safeUnion(excluded)]),
+    );
+};
+
 export const holedMask = (
     input:
         | Feature<Polygon | MultiPolygon>

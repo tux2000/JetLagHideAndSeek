@@ -14,8 +14,10 @@ import { FeatureGroup, Marker, Polygon, Polyline } from "react-leaflet";
 import { EditControl } from "react-leaflet-draw";
 
 import {
+    additionalMapGeoPolygons,
     autoSave,
     drawingQuestionKey,
+    drawAreaIntoPresets,
     mapGeoJSON,
     polyGeoJSON,
     questionModified,
@@ -238,6 +240,7 @@ const MeasuringPointMarker = ({
 
 export const PolygonDraw = () => {
     const $drawingQuestionKey = useStore(drawingQuestionKey);
+    const $drawAreaIntoPresets = useStore(drawAreaIntoPresets);
     const $questions = useStore(questions);
 
     const featureRef = useRef<any | null>(null);
@@ -245,7 +248,10 @@ export const PolygonDraw = () => {
     let question: Question | undefined;
 
     if ($drawingQuestionKey === -1) {
-        L.drawLocal.draw.toolbar.buttons.polygon = "Draw the hiding zone!";
+        L.drawLocal.draw.toolbar.buttons.polygon =
+            $drawAreaIntoPresets
+                ? "Draw an area to combine with presets!"
+                : "Draw the hiding zone!";
     } else {
         question = $questions.find((q) => q.key === $drawingQuestionKey);
 
@@ -262,17 +268,39 @@ export const PolygonDraw = () => {
         }
     }
 
-    const onChange = () => {
+    const onChange = (event?: any) => {
         if (drawingQuestionKey.get() === -1) {
-            if (!featureRef.current?._layers) return;
+            if (!featureRef.current?._layers && !event?.layer) return;
 
-            const layers = featureRef.current._layers;
-            const geoJSONs = Object.values(layers).map((layer: any) =>
-                layer.toGeoJSON(),
-            );
+            const layers = featureRef.current?._layers ?? {};
+            const geoJSONs =
+                drawAreaIntoPresets.get() && event?.layer?.toGeoJSON
+                    ? [event.layer.toGeoJSON()]
+                    : Object.values(layers).map((layer: any) =>
+                          layer.toGeoJSON(),
+                      );
             const geoJSON = turf.featureCollection(
                 geoJSONs,
             ) as FeatureCollection<GeoJSONPolygon | MultiPolygon>;
+
+            if (drawAreaIntoPresets.get()) {
+                const id =
+                    typeof crypto !== "undefined" &&
+                    typeof crypto.randomUUID === "function"
+                        ? crypto.randomUUID()
+                        : String(Date.now());
+                additionalMapGeoPolygons.set([
+                    ...additionalMapGeoPolygons.get(),
+                    { id, added: true, geojson: geoJSON },
+                ]);
+                featureRef.current.clearLayers();
+                drawAreaIntoPresets.set(false);
+                mapGeoJSON.set(null);
+                polyGeoJSON.set(null);
+                clearCache(CacheType.ZONE_CACHE);
+                questions.set([...questions.get()]);
+                return;
+            }
 
             mapGeoJSON.set(geoJSON);
             polyGeoJSON.set(geoJSON);

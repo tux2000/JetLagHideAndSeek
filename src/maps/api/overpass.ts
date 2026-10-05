@@ -6,12 +6,14 @@ import { toast } from "react-toastify";
 
 import {
     additionalMapGeoLocations,
+    additionalMapGeoPolygons,
     mapGeoLocation,
+    mapGeoJSON,
     overpassCustomHost,
     overpassHost,
     polyGeoJSON,
 } from "@/lib/context";
-import { safeUnion } from "@/maps/geo-utils";
+import { combineAreaPolygons, safeUnion } from "@/maps/geo-utils";
 
 import { cacheFetch, determineCache } from "./cache";
 import { LOCATION_FIRST_TAG, OVERPASS_HOSTS } from "./constants";
@@ -327,11 +329,38 @@ out ${outType};
           `;
             })
             .join("\n");
+        const drawnAreaSearchBlocks = additionalMapGeoPolygons
+            .get()
+            .filter((area) => area.added)
+            .flatMap((area) =>
+                area.geojson.features.flatMap((feature) => {
+                    const polygons =
+                        feature.geometry.type === "Polygon"
+                            ? [feature.geometry.coordinates]
+                            : feature.geometry.coordinates;
+                    return polygons.map((polygon) => {
+                        const coordinates = polygon[0]
+                            .map(([longitude, latitude]) =>
+                                [latitude, longitude].join(" "),
+                            )
+                            .join(" ");
+                        const alternateSearches = alternatives
+                            .map(
+                                (alternative) =>
+                                    `${searchType}${alternative}(poly:"${coordinates}");`,
+                            )
+                            .join("\n");
+                        return `${searchType}${filter}(poly:"${coordinates}");\n${alternateSearches}`;
+                    });
+                }),
+            )
+            .join("\n");
         query = `
         [out:json]${timeoutDuration !== 0 ? `[timeout:${timeoutDuration}]` : ""};
         ${relationToAreaBlocks}
         (
         ${searchBlocks}
+        ${drawnAreaSearchBlocks}
         );
         out ${outType};
         `;
@@ -345,7 +374,14 @@ out ${outType};
         .get()
         .filter((e) => !e.added);
     const subtractedPolygons = subtractedEntries.map((entry) => entry.location);
-    if (subtractedPolygons.length > 0 && data && data.elements) {
+    const excludedDrawnAreas = additionalMapGeoPolygons
+        .get()
+        .filter((area) => !area.added)
+        .flatMap((area) => area.geojson.features);
+    if (
+        (subtractedPolygons.length > 0 || excludedDrawnAreas.length > 0) &&
+        data?.elements
+    ) {
         const turfPolys = await Promise.all(
             subtractedPolygons.map(
                 async (location) =>
@@ -357,6 +393,7 @@ out ${outType};
                     ).features[0],
             ),
         );
+        turfPolys.push(...excludedDrawnAreas);
         data.elements = data.elements.filter((el: any) => {
             const lon = el.center ? el.center.lon : el.lon;
             const lat = el.center ? el.center.lat : el.lat;
@@ -366,6 +403,21 @@ out ${outType};
             return !turfPolys.some((poly) =>
                 turf.booleanPointInPolygon(pt, poly as any),
             );
+        });
+    }
+    const activeBoundary = mapGeoJSON.get();
+    if (
+        additionalMapGeoPolygons.get().length > 0 &&
+        activeBoundary &&
+        data?.elements
+    ) {
+        const boundary = safeUnion(activeBoundary);
+        data.elements = data.elements.filter((el: any) => {
+            const lon = el.center ? el.center.lon : el.lon;
+            const lat = el.center ? el.center.lat : el.lat;
+            if (typeof lon !== "number" || typeof lat !== "number")
+                return false;
+            return turf.booleanPointInPolygon(turf.point([lon, lat]), boundary);
         });
     }
     return data;
@@ -434,28 +486,29 @@ export const determineMapBoundaries = async () => {
         })),
     );
 
-    let mapGeoData = turf.featureCollection([
-        safeUnion(
-            turf.featureCollection(
-                mapGeoDatum
-                    .filter((x) => x.added)
-                    .flatMap((x) => x.data.features),
-            ) as any,
-        ),
-    ]);
-
-    const differences = mapGeoDatum.filter((x) => !x.added).map((x) => x.data);
-
-    if (differences.length > 0) {
-        mapGeoData = turf.featureCollection([
-            turf.difference(
-                turf.featureCollection([
-                    mapGeoData.features[0],
-                    ...differences.flatMap((x) => x.features),
-                ]),
-            )!,
-        ]);
+    const drawnAreas = additionalMapGeoPolygons.get();
+    const combinedBoundary = combineAreaPolygons(
+        turf.featureCollection([
+            ...mapGeoDatum
+                .filter((x) => x.added)
+                .flatMap((x) => x.data.features),
+            ...drawnAreas
+                .filter((area) => area.added)
+                .flatMap((area) => area.geojson.features),
+        ]),
+        turf.featureCollection([
+            ...mapGeoDatum
+                .filter((x) => !x.added)
+                .flatMap((x) => x.data.features),
+            ...drawnAreas
+                .filter((area) => !area.added)
+                .flatMap((area) => area.geojson.features),
+        ]),
+    );
+    if (!combinedBoundary) {
+        throw new Error("Excluded areas remove the entire map");
     }
+    const mapGeoData = turf.featureCollection([combinedBoundary]);
 
     if (turf.coordAll(mapGeoData).length > 10000) {
         turf.simplify(mapGeoData, {

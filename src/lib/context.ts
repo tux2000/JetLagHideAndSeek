@@ -1,5 +1,9 @@
 import { persistentAtom } from "@nanostores/persistent";
-import type { FeatureCollection, MultiPolygon, Polygon } from "geojson";
+import type {
+    FeatureCollection,
+    MultiPolygon,
+    Polygon,
+} from "geojson";
 import type { Map } from "leaflet";
 import { atom, computed, onSet } from "nanostores";
 
@@ -52,6 +56,17 @@ export const additionalMapGeoLocations = persistentAtom<
     encode: JSON.stringify,
     decode: JSON.parse,
 });
+export type AdditionalMapGeoPolygon = {
+    id: string;
+    added: boolean;
+    geojson: FeatureCollection<Polygon | MultiPolygon>;
+};
+export const additionalMapGeoPolygons = persistentAtom<
+    AdditionalMapGeoPolygon[]
+>("additionalMapGeoPolygons", [], {
+    encode: JSON.stringify,
+    decode: JSON.parse,
+});
 export const permanentOverlay = persistentAtom<FeatureCollection | null>(
     "permanentOverlay",
     null,
@@ -70,6 +85,7 @@ export const polyGeoJSON = persistentAtom<FeatureCollection<
     encode: JSON.stringify,
     decode: JSON.parse,
 });
+export const drawAreaIntoPresets = atom(false);
 
 export const questions = persistentAtom<Questions>("questions", [], {
     encode: JSON.stringify,
@@ -262,6 +278,7 @@ export const hidingZone = computed(
         polyGeoJSON,
         mapGeoLocation,
         additionalMapGeoLocations,
+        additionalMapGeoPolygons,
         disabledStations,
         hidingRadius,
         hidingRadiusUnits,
@@ -277,6 +294,7 @@ export const hidingZone = computed(
         geo,
         loc,
         altLoc,
+        areaPolygons,
         disabledStations,
         radius,
         hidingRadiusUnits,
@@ -300,6 +318,7 @@ export const hidingZone = computed(
                 includeDefaultStations: includeDefault,
                 presets: structuredClone(presets),
                 permanentOverlay: $permanentOverlay,
+                additionalMapGeoPolygons: structuredClone(areaPolygons),
             };
         } else {
             const $loc = structuredClone(loc);
@@ -311,6 +330,7 @@ export const hidingZone = computed(
                 hidingRadius: radius,
                 hidingRadiusUnits,
                 alternateLocations: structuredClone(altLoc),
+                additionalMapGeoPolygons: structuredClone(areaPolygons),
                 zoneOptions: zoneOptions,
                 useCustomStations: useCustom,
                 customStations: $customStations,
