@@ -381,7 +381,7 @@ ${
         : ""
 }
 );
-out ${outType};
+out ${outType} qt;
 `;
     } else {
         const primaryLocation = mapGeoLocation.get();
@@ -446,7 +446,7 @@ out ${outType};
         ${searchBlocks}
         ${drawnAreaSearchBlocks}
         );
-        out ${outType};
+        out ${outType} qt;
         `;
     }
     const data = await getOverpassData(

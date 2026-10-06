@@ -211,6 +211,7 @@ export const ZoneSidebar = () => {
                         "nwr",
                         "center",
                         $displayHidingZonesOptions.slice(1),
+                        60,
                     ),
                 ).features;
 
