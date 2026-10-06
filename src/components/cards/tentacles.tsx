@@ -22,8 +22,8 @@ import {
     triggerLocalRefresh,
 } from "@/lib/context";
 import { cn, mapToObj } from "@/lib/utils";
-import { defaultQuestionVariantId } from "@/maps/default-question-variants";
 import { findTentacleLocations } from "@/maps/api";
+import { defaultQuestionVariantId } from "@/maps/default-question-variants";
 import { arcDistance } from "@/maps/geo-utils";
 import {
     determineUnionizedStrings,

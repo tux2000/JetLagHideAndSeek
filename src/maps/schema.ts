@@ -245,6 +245,7 @@ const ordinaryMatchingQuestionSchema = baseMatchingQuestionSchema.extend({
             z
                 .literal("park-full")
                 .describe("Park Question (Small+Medium Games)"),
+            z.literal("river").describe("Same River Question"),
         ])
         .default("airport"),
 });
@@ -337,6 +338,7 @@ const ordinaryMeasuringQuestionSchema = baseMeasuringQuestionSchema.extend({
                 .literal("highspeed-measure-shinkansen")
                 .describe("High-Speed Rail Question"),
             z.literal("admin-measure").describe("Admin Border Question"),
+            z.literal("river").describe("River Question"),
             z
                 .literal("aquarium-full")
                 .describe("Aquarium Question (Small+Medium Games)"),

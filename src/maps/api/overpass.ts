@@ -1,5 +1,10 @@
 import * as turf from "@turf/turf";
-import type { FeatureCollection, MultiPolygon } from "geojson";
+import type {
+    Feature,
+    FeatureCollection,
+    MultiPolygon,
+    Polygon,
+} from "geojson";
 import _ from "lodash";
 import osmtogeojson from "osmtogeojson";
 import { toast } from "react-toastify";
@@ -29,6 +34,61 @@ type TentacleLocationQuery = Pick<
     EncompassingTentacleQuestionSchema,
     "lat" | "lng" | "radius" | "unit" | "locationType"
 >;
+
+type OsmElementGeometry = {
+    center?: { lat?: number; lon?: number };
+    lat?: number;
+    lon?: number;
+    geometry?: { lat?: number; lon?: number }[];
+};
+
+export const osmElementIntersectsBoundary = (
+    element: OsmElementGeometry,
+    boundary: Feature<Polygon | MultiPolygon>,
+) => {
+    const coordinates = (element.geometry ?? [])
+        .filter(
+            (coordinate) =>
+                typeof coordinate.lon === "number" &&
+                typeof coordinate.lat === "number",
+        )
+        .map((coordinate) => [coordinate.lon!, coordinate.lat!]);
+    if (coordinates.length >= 2) {
+        return turf.booleanIntersects(turf.lineString(coordinates), boundary);
+    }
+
+    const point = osmElementCenterPoint(element, coordinates);
+    return point ? turf.booleanPointInPolygon(point, boundary) : false;
+};
+
+export const osmElementCenterWithinBoundary = (
+    element: OsmElementGeometry,
+    boundary: Feature<Polygon | MultiPolygon>,
+) => {
+    const coordinates = (element.geometry ?? [])
+        .filter(
+            (coordinate) =>
+                typeof coordinate.lon === "number" &&
+                typeof coordinate.lat === "number",
+        )
+        .map((coordinate) => [coordinate.lon!, coordinate.lat!]);
+    const point = osmElementCenterPoint(element, coordinates);
+    return point ? turf.booleanPointInPolygon(point, boundary) : false;
+};
+
+const osmElementCenterPoint = (
+    element: OsmElementGeometry,
+    coordinates: number[][],
+) => {
+    const longitude = element.center?.lon ?? element.lon;
+    const latitude = element.center?.lat ?? element.lat;
+    if (typeof longitude === "number" && typeof latitude === "number") {
+        return turf.point([longitude, latitude]);
+    }
+
+    if (coordinates.length < 2) return null;
+    return turf.center(turf.lineString(coordinates));
+};
 
 export const getOverpassData = async (
     query: string,
@@ -419,13 +479,8 @@ out ${outType};
         );
         turfPolys.push(...excludedDrawnAreas);
         data.elements = data.elements.filter((el: any) => {
-            const lon = el.center ? el.center.lon : el.lon;
-            const lat = el.center ? el.center.lat : el.lat;
-            if (typeof lon !== "number" || typeof lat !== "number")
-                return false;
-            const pt = turf.point([lon, lat]);
             return !turfPolys.some((poly) =>
-                turf.booleanPointInPolygon(pt, poly as any),
+                osmElementCenterWithinBoundary(el, poly as any),
             );
         });
     }
@@ -437,11 +492,7 @@ out ${outType};
     ) {
         const boundary = safeUnion(activeBoundary);
         data.elements = data.elements.filter((el: any) => {
-            const lon = el.center ? el.center.lon : el.lon;
-            const lat = el.center ? el.center.lat : el.lat;
-            if (typeof lon !== "number" || typeof lat !== "number")
-                return false;
-            return turf.booleanPointInPolygon(turf.point([lon, lat]), boundary);
+            return osmElementIntersectsBoundary(el, boundary);
         });
     }
     return data;

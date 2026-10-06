@@ -33,6 +33,7 @@ export const DEFAULT_QUESTION_VARIANTS = [
     { id: "matching:golf_course", family: "matching", value: "golf_course", label: "Golf Course" },
     { id: "matching:consulate", family: "matching", value: "consulate", label: "Consulate" },
     { id: "matching:park", family: "matching", value: "park", label: "Park" },
+    { id: "matching:river", family: "matching", value: "river", label: "Same River" },
     {
         id: "matching:same-first-letter-station",
         family: "matching",
@@ -77,6 +78,7 @@ export const DEFAULT_QUESTION_VARIANTS = [
     { id: "measuring:golf_course", family: "measuring", value: "golf_course", label: "Golf Course" },
     { id: "measuring:consulate", family: "measuring", value: "consulate", label: "Consulate" },
     { id: "measuring:park", family: "measuring", value: "park", label: "Park" },
+    { id: "measuring:river", family: "measuring", value: "river", label: "River" },
     { id: "measuring:mcdonalds", family: "measuring", value: "mcdonalds", label: "McDonald's" },
     { id: "measuring:seven11", family: "measuring", value: "seven11", label: "7-Eleven" },
     { id: "measuring:rail-measure", family: "measuring", value: "rail-measure", label: "Train Station" },

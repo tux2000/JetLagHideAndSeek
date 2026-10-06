@@ -34,6 +34,7 @@ import type {
     HomeGameMeasuringQuestions,
     MeasuringQuestion,
 } from "@/maps/schema";
+import { findRiversInZone, nearestRiverAt } from "@/maps/questions/rivers";
 
 export interface AdminZoneInfo {
     name: string;
@@ -153,6 +154,8 @@ export const determineMeasuringBoundary = async (
             const outline = turf.polygonToLine(zoneInfo.boundary);
             return [outline];
         }
+        case "river":
+            return (await findRiversInZone()).features;
         case "coastline": {
             const coastline = turf.lineToPolygon(
                 await fetchCoastline(),
@@ -383,6 +386,23 @@ export const hiderifyMeasuring = async (question: MeasuringQuestion) => {
             questionNearest.properties.distanceToPoint >
             hiderNearest.properties.distanceToPoint;
 
+        return question;
+    }
+
+    if (question.type === "river") {
+        const rivers = await findRiversInZone();
+        const seekerRiver = nearestRiverAt(
+            turf.point([question.lng, question.lat]),
+            rivers,
+        );
+        const hiderRiver = nearestRiverAt(
+            turf.point([$hiderMode.longitude, $hiderMode.latitude]),
+            rivers,
+        );
+        if (seekerRiver && hiderRiver) {
+            question.hiderCloser =
+                hiderRiver.distanceMeters < seekerRiver.distanceMeters;
+        }
         return question;
     }
 

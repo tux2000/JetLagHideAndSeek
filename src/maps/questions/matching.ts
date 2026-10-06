@@ -26,6 +26,12 @@ import {
 } from "@/maps/api";
 import { holedMask, modifyMapData, safeUnion } from "@/maps/geo-utils";
 import { geoSpatialVoronoi } from "@/maps/geo-utils";
+import {
+    findRiversInZone,
+    isSameRiver,
+    nearestRiverAt,
+    riverRegionFor,
+} from "@/maps/questions/rivers";
 import type {
     APILocations,
     HomeGameMatchingQuestions,
@@ -138,6 +144,22 @@ export const determineMatchingBoundary = _.memoize(
             case "same-length-station":
             case "same-train-line": {
                 return false;
+            }
+            case "river": {
+                const rivers = await findRiversInZone();
+                const gameArea = mapGeoJSON.get() ?? polyGeoJSON.get();
+                if (!gameArea) return false;
+                const region = riverRegionFor(
+                    turf.point([question.lng, question.lat]),
+                    rivers,
+                    turf.bbox(gameArea),
+                );
+                if (region.features.length === 0) {
+                    toast.error("No named rivers found in this game area");
+                    return false;
+                }
+                boundary = region;
+                break;
             }
             case "custom-zone": {
                 boundary = question.geo;
@@ -309,6 +331,22 @@ export const hiderifyMatching = async (question: MatchingQuestion) => {
         question.same =
             questionNearest.properties.name === hiderNearest.properties.name;
 
+        return question;
+    }
+
+    if (question.type === "river") {
+        const rivers = await findRiversInZone();
+        const seekerRiver = nearestRiverAt(
+            turf.point([question.lng, question.lat]),
+            rivers,
+        );
+        const hiderRiver = nearestRiverAt(
+            turf.point([$hiderMode.longitude, $hiderMode.latitude]),
+            rivers,
+        );
+        if (seekerRiver && hiderRiver) {
+            question.same = isSameRiver(seekerRiver, hiderRiver);
+        }
         return question;
     }
 
