@@ -29,6 +29,7 @@ const Select = <T extends string>({
     trigger,
     options,
     groups,
+    disabledOptions,
     value,
     onValueChange,
     disabled,
@@ -40,6 +41,7 @@ const Select = <T extends string>({
         string,
         { disabled?: boolean; options: Options<T> } | Options<T>
     >;
+    disabledOptions?: T[];
     onValueChange?: (value: T) => void;
     value: T;
 }) => {
@@ -196,6 +198,7 @@ const Select = <T extends string>({
                             <SelectItem
                                 key={k}
                                 selected={k === value}
+                                disabled={disabledOptions?.includes(k as T)}
                                 onSelect={() => handleSelect(k as T)}
                             >
                                 {label as string}
@@ -221,7 +224,12 @@ const Select = <T extends string>({
                                             <SelectItem
                                                 key={k}
                                                 selected={k === value}
-                                                disabled={groupDisabled}
+                                                disabled={
+                                                    groupDisabled ||
+                                                    disabledOptions?.includes(
+                                                        k as T,
+                                                    )
+                                                }
                                                 onSelect={() =>
                                                     handleSelect(k as T)
                                                 }

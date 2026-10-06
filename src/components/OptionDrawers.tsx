@@ -23,6 +23,7 @@ import {
     customStations,
     defaultCustomQuestions,
     defaultUnit,
+    disabledDefaultQuestionVariants,
     disabledStations,
     displayHidingZonesOptions,
     followMe,
@@ -56,6 +57,11 @@ import {
     uploadToPastebin,
 } from "@/lib/utils";
 import { OVERPASS_HOSTS } from "@/maps/api/constants";
+import {
+    DEFAULT_QUESTION_VARIANTS,
+    type DefaultQuestionVariantFamily,
+    type DefaultQuestionVariantId,
+} from "@/maps/default-question-variants";
 import { questionsSchema } from "@/maps/schema";
 
 import { LatitudeLongitude } from "./LatLngPicker";
@@ -76,6 +82,16 @@ const HIDING_ZONE_URL_PARAM = "hz";
 const HIDING_ZONE_COMPRESSED_URL_PARAM = "hzc";
 const PASTEBIN_URL_PARAM = "pb";
 const FETCH_URL_PARAM = "url";
+const DEFAULT_QUESTION_FAMILIES: {
+    id: DefaultQuestionVariantFamily;
+    label: string;
+}[] = [
+    { id: "radius", label: "Radius" },
+    { id: "thermometer", label: "Thermometer" },
+    { id: "tentacles", label: "Tentacles" },
+    { id: "matching", label: "Matching" },
+    { id: "measuring", label: "Measuring" },
+];
 
 export const OptionDrawers = ({ className }: { className?: string }) => {
     useStore(triggerLocalRefresh);
@@ -87,6 +103,9 @@ export const OptionDrawers = ({ className }: { className?: string }) => {
     const $hiderMode = useStore(hiderMode);
     const $autoSave = useStore(autoSave);
     const $hidingZone = useStore(hidingZone);
+    const $disabledDefaultQuestionVariants = useStore(
+        disabledDefaultQuestionVariants,
+    );
     const $planningMode = useStore(planningModeEnabled);
     const $baseTileLayer = useStore(baseTileLayer);
     const $thunderforestApiKey = useStore(thunderforestApiKey);
@@ -248,6 +267,20 @@ export const OptionDrawers = ({ className }: { className?: string }) => {
                     ...area,
                     id: area.id ?? `imported-${index}`,
                 })),
+            );
+            const validDefaultQuestionIds = new Set<string>(
+                DEFAULT_QUESTION_VARIANTS.map(({ id }) => id),
+            );
+            disabledDefaultQuestionVariants.set(
+                (
+                    Array.isArray(geojson.disabledDefaultQuestionVariants)
+                        ? geojson.disabledDefaultQuestionVariants
+                        : []
+                ).filter(
+                    (id: unknown): id is DefaultQuestionVariantId =>
+                        typeof id === "string" &&
+                        validDefaultQuestionIds.has(id),
+                ),
             );
 
             const incomingPresets =
@@ -535,6 +568,59 @@ export const OptionDrawers = ({ className }: { className?: string }) => {
                                 unit={$defaultUnit}
                                 onChange={defaultUnit.set}
                             />
+                            <Separator className="bg-slate-300 w-[280px]" />
+                            <Label>Default Question Library</Label>
+                            <div className="w-full max-w-[400px] flex flex-col gap-3">
+                                {DEFAULT_QUESTION_FAMILIES.map((family) => (
+                                    <div
+                                        className="flex flex-col gap-1"
+                                        key={family.id}
+                                    >
+                                        <Label>{family.label}</Label>
+                                        {DEFAULT_QUESTION_VARIANTS.filter(
+                                            (variant) =>
+                                                variant.family === family.id,
+                                        ).map((variant) => (
+                                            <div
+                                                className="flex items-center justify-between gap-4 pl-3"
+                                                key={variant.id}
+                                            >
+                                                <Label
+                                                    htmlFor={`question-${variant.id}`}
+                                                >
+                                                    {variant.label}
+                                                </Label>
+                                                <Checkbox
+                                                    id={`question-${variant.id}`}
+                                                    checked={
+                                                        !$disabledDefaultQuestionVariants.includes(
+                                                            variant.id,
+                                                        )
+                                                    }
+                                                    onCheckedChange={() => {
+                                                        const disabled =
+                                                            $disabledDefaultQuestionVariants.includes(
+                                                                variant.id,
+                                                            );
+                                                        disabledDefaultQuestionVariants.set(
+                                                            disabled
+                                                                ? $disabledDefaultQuestionVariants.filter(
+                                                                      (id) =>
+                                                                          id !==
+                                                                          variant.id,
+                                                                  )
+                                                                : [
+                                                                      ...$disabledDefaultQuestionVariants,
+                                                                      variant.id,
+                                                                  ],
+                                                        );
+                                                    }}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
                             <Separator className="bg-slate-300 w-[280px]" />
                             <Label>New Custom Question Defaults</Label>
                             <Select

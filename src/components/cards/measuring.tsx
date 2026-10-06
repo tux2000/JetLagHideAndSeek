@@ -15,6 +15,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
     customInitPreference,
+    disabledDefaultQuestionVariants,
     displayHidingZones,
     drawingQuestionKey,
     hiderMode,
@@ -24,6 +25,7 @@ import {
     triggerLocalRefresh,
 } from "@/lib/context";
 import { cn } from "@/lib/utils";
+import { defaultQuestionVariantId } from "@/maps/default-question-variants";
 import {
     determineMeasuringBoundary,
     findAdminZoneInfo,
@@ -54,6 +56,9 @@ export const MeasuringQuestionComponent = ({
     const $displayHidingZones = useStore(displayHidingZones);
     const $drawingQuestionKey = useStore(drawingQuestionKey);
     const $isLoading = useStore(isLoading);
+    const $disabledDefaultQuestionVariants = useStore(
+        disabledDefaultQuestionVariants,
+    );
     const $customInitPref = useStore(customInitPreference);
     const [customDialogOpen, setCustomDialogOpen] = React.useState(false);
     const label = `Measuring
@@ -282,6 +287,16 @@ export const MeasuringQuestionComponent = ({
                                     options: Record<string, string>;
                                 }
                             >,
+                        )}
+                    disabledOptions={measuringQuestionSchema.options
+                        .flatMap((option) =>
+                            determineUnionizedStrings(option.shape.type),
+                        )
+                        .map((option) => (option._def as any).value)
+                        .filter((value) =>
+                            $disabledDefaultQuestionVariants.includes(
+                                defaultQuestionVariantId("measuring", value),
+                            ),
                         )}
                     value={data.type}
                     onValueChange={async (value) => {

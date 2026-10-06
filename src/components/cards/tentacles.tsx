@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sidebar-l";
 import { UnitSelect } from "@/components/UnitSelect";
 import {
+    disabledDefaultQuestionVariants,
     drawingQuestionKey,
     hiderMode,
     isLoading,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/context";
 import { cn, mapToObj } from "@/lib/utils";
 import { findTentacleLocations } from "@/maps/api";
+import { defaultQuestionVariantId } from "@/maps/default-question-variants";
 import { arcDistance } from "@/maps/geo-utils";
 import {
     determineUnionizedStrings,
@@ -47,6 +49,9 @@ export const TentacleQuestionComponent = ({
     const $questions = useStore(questions);
     const $drawingQuestionKey = useStore(drawingQuestionKey);
     const $isLoading = useStore(isLoading);
+    const $disabledDefaultQuestionVariants = useStore(
+        disabledDefaultQuestionVariants,
+    );
     const label = `Tentacles
     ${
         $questions
@@ -118,6 +123,18 @@ export const TentacleQuestionComponent = ({
                                 ),
                             ]),
                     )}
+                    disabledOptions={tentacleQuestionSchema.options
+                        .flatMap((option) =>
+                            determineUnionizedStrings(
+                                option.shape.locationType,
+                            ),
+                        )
+                        .map((option) => (option._def as any).value)
+                        .filter((value) =>
+                            $disabledDefaultQuestionVariants.includes(
+                                defaultQuestionVariantId("tentacles", value),
+                            ),
+                        )}
                     value={data.locationType}
                     onValueChange={async (value) => {
                         if (value === "custom") {

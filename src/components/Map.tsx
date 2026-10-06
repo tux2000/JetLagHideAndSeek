@@ -15,6 +15,7 @@ import {
     animateMapMovements,
     autoZoom,
     baseTileLayer,
+    disabledDefaultQuestionVariants,
     followMe,
     hiderMode,
     isLoading,
@@ -33,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { applyQuestionsToMapGeoData, holedMask } from "@/maps";
 import { hiderifyQuestion } from "@/maps";
 import { clearCache, determineMapBoundaries } from "@/maps/api";
+import { getFirstEnabledDefaultQuestionVariant } from "@/maps/default-question-variants";
 
 import { DraggableMarkers } from "./DraggableMarkers";
 import { LeafletFullScreenButton } from "./LeafletFullScreenButton";
@@ -120,6 +122,9 @@ export const Map = ({ className }: { className?: string }) => {
     const $mapGeoLocation = useStore(mapGeoLocation);
     const $questions = useStore(questions);
     const $baseTileLayer = useStore(baseTileLayer);
+    const $disabledDefaultQuestionVariants = useStore(
+        disabledDefaultQuestionVariants,
+    );
     const $thunderforestApiKey = useStore(thunderforestApiKey);
     const $hiderMode = useStore(hiderMode);
     const $isLoading = useStore(isLoading);
@@ -240,6 +245,34 @@ export const Map = ({ className }: { className?: string }) => {
         }
     };
 
+    useEffect(() => {
+        if (!map) return;
+
+        const contextmenu = (map as any).contextmenu;
+        const items = (map.options as any).contextmenuItems as any[] | undefined;
+        if (!contextmenu || !items) return;
+
+        contextmenu.removeAllItems();
+        items
+            .filter(
+                (item) => {
+                    if (item.variantId) {
+                        return !$disabledDefaultQuestionVariants.includes(
+                            item.variantId,
+                        );
+                    }
+                    if (item.variantFamily) {
+                        return !!getFirstEnabledDefaultQuestionVariant(
+                            item.variantFamily,
+                            $disabledDefaultQuestionVariants,
+                        );
+                    }
+                    return true;
+                },
+            )
+            .forEach((item) => contextmenu.addItem(item));
+    }, [map, $disabledDefaultQuestionVariants]);
+
     const displayMap = useMemo(
         () => (
             <MapContainer
@@ -253,6 +286,7 @@ export const Map = ({ className }: { className?: string }) => {
                 contextmenuItems={[
                     {
                         text: "Add Radius",
+                        variantId: "radius:default",
                         callback: (e: any) =>
                             addQuestion({
                                 id: "radius",
@@ -264,6 +298,7 @@ export const Map = ({ className }: { className?: string }) => {
                     },
                     {
                         text: "Add Thermometer",
+                        variantId: "thermometer:default",
                         callback: (e: any) => {
                             const destination = turf.destination(
                                 [e.latlng.lng, e.latlng.lat],
@@ -287,42 +322,67 @@ export const Map = ({ className }: { className?: string }) => {
                     },
                     {
                         text: "Add Tentacles",
+                        variantFamily: "tentacles",
                         callback: (e: any) => {
+                            const variant =
+                                getFirstEnabledDefaultQuestionVariant(
+                                    "tentacles",
+                                    disabledDefaultQuestionVariants.get(),
+                                );
+                            if (!variant) return;
                             addQuestion({
                                 id: "tentacles",
                                 data: {
                                     lat: e.latlng.lat,
                                     lng: e.latlng.lng,
+                                    locationType: variant.value,
                                 },
                             });
                         },
                     },
                     {
                         text: "Add Matching",
+                        variantFamily: "matching",
                         callback: (e: any) => {
+                            const variant =
+                                getFirstEnabledDefaultQuestionVariant(
+                                    "matching",
+                                    disabledDefaultQuestionVariants.get(),
+                                );
+                            if (!variant) return;
                             addQuestion({
                                 id: "matching",
                                 data: {
                                     lat: e.latlng.lat,
                                     lng: e.latlng.lng,
+                                    type: variant.value,
                                 },
                             });
                         },
                     },
                     {
                         text: "Add Measuring",
+                        variantFamily: "measuring",
                         callback: (e: any) => {
+                            const variant =
+                                getFirstEnabledDefaultQuestionVariant(
+                                    "measuring",
+                                    disabledDefaultQuestionVariants.get(),
+                                );
+                            if (!variant) return;
                             addQuestion({
                                 id: "measuring",
                                 data: {
                                     lat: e.latlng.lat,
                                     lng: e.latlng.lng,
+                                    type: variant.value,
                                 },
                             });
                         },
                     },
                     {
                         text: "Exclude Country",
+                        variantId: "matching:zone",
                         callback: (e: any) => {
                             addQuestion({
                                 id: "matching",

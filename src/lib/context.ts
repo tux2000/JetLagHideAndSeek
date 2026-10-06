@@ -13,6 +13,10 @@ import type {
     OpenStreetMap,
     StationCircle,
 } from "@/maps/api";
+import {
+    DEFAULT_QUESTION_VARIANTS,
+    type DefaultQuestionVariantId,
+} from "@/maps/default-question-variants";
 import { extractStationLabel } from "@/maps/geo-utils";
 import {
     type DeepPartial,
@@ -272,10 +276,28 @@ export const deleteCustomPreset = (id: string) => {
     customPresets.set(customPresets.get().filter((p) => p.id !== id));
 };
 
+export const disabledDefaultQuestionVariants = persistentAtom<
+    DefaultQuestionVariantId[]
+>("disabledDefaultQuestionVariants", [], {
+    encode: JSON.stringify,
+    decode: (value) => {
+        const allowedIds = new Set(
+            DEFAULT_QUESTION_VARIANTS.map(({ id }) => id),
+        );
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed)
+            ? parsed.filter((id): id is DefaultQuestionVariantId =>
+                  allowedIds.has(id),
+              )
+            : [];
+    },
+});
+
 export const hidingZone = computed(
     [
         questions,
         polyGeoJSON,
+        disabledDefaultQuestionVariants,
         mapGeoLocation,
         additionalMapGeoLocations,
         additionalMapGeoPolygons,
@@ -292,6 +314,7 @@ export const hidingZone = computed(
     (
         q,
         geo,
+        disabledVariants,
         loc,
         altLoc,
         areaPolygons,
@@ -309,6 +332,7 @@ export const hidingZone = computed(
             return {
                 ...geo,
                 questions: q,
+                disabledDefaultQuestionVariants: [...disabledVariants],
                 disabledStations: disabledStations,
                 hidingRadius: radius,
                 hidingRadiusUnits,
@@ -327,6 +351,7 @@ export const hidingZone = computed(
             return {
                 ...$loc,
                 disabledStations: disabledStations,
+                disabledDefaultQuestionVariants: [...disabledVariants],
                 hidingRadius: radius,
                 hidingRadiusUnits,
                 alternateLocations: structuredClone(altLoc),
@@ -381,7 +406,6 @@ export const defaultCustomQuestions = persistentAtom<boolean>(
         decode: JSON.parse,
     },
 );
-
 export const pastebinApiKey = persistentAtom<string>("pastebinApiKey", "");
 export const alwaysUsePastebin = persistentAtom<boolean>(
     "alwaysUsePastebin",

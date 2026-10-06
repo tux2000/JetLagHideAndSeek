@@ -14,9 +14,12 @@ import { SidebarMenuButton } from "@/components/ui/sidebar-l";
 import {
     addQuestion,
     defaultCustomQuestions,
+    disabledDefaultQuestionVariants,
     isLoading,
     leafletMapContext,
 } from "@/lib/context";
+import type { DefaultQuestionVariantFamily } from "@/maps/default-question-variants";
+import { getFirstEnabledDefaultQuestionVariant } from "@/maps/default-question-variants";
 
 export const AddQuestionDialog = ({
     children,
@@ -24,7 +27,19 @@ export const AddQuestionDialog = ({
     children: React.ReactNode;
 }) => {
     const $isLoading = useStore(isLoading);
+    const $disabledDefaultQuestionVariants = useStore(
+        disabledDefaultQuestionVariants,
+    );
+    const $defaultCustomQuestions = useStore(defaultCustomQuestions);
     const [open, setOpen] = React.useState(false);
+
+    const canAddQuestionFamily = (family: DefaultQuestionVariantFamily) =>
+        $defaultCustomQuestions ||
+        !!
+            getFirstEnabledDefaultQuestionVariant(
+                family,
+                $disabledDefaultQuestionVariants,
+            );
 
     const runAddRadius = () => {
         const map = leafletMapContext.get();
@@ -62,16 +77,25 @@ export const AddQuestionDialog = ({
         const map = leafletMapContext.get();
         if (!map) return false;
         const center = map.getCenter();
+        const variant = getFirstEnabledDefaultQuestionVariant(
+            "tentacles",
+            $disabledDefaultQuestionVariants,
+        );
+        if (!$defaultCustomQuestions && !variant) return false;
         addQuestion({
             id: "tentacles",
-            data: defaultCustomQuestions.get()
+            data: $defaultCustomQuestions
                 ? {
                       lat: center.lat,
                       lng: center.lng,
                       locationType: "custom",
                       places: [],
                   }
-                : { lat: center.lat, lng: center.lng },
+                : {
+                      lat: center.lat,
+                      lng: center.lng,
+                      locationType: variant!.value,
+                  },
         });
         return true;
     };
@@ -80,11 +104,16 @@ export const AddQuestionDialog = ({
         const map = leafletMapContext.get();
         if (!map) return false;
         const center = map.getCenter();
+        const variant = getFirstEnabledDefaultQuestionVariant(
+            "matching",
+            $disabledDefaultQuestionVariants,
+        );
+        if (!$defaultCustomQuestions && !variant) return false;
         addQuestion({
             id: "matching",
-            data: defaultCustomQuestions.get()
+            data: $defaultCustomQuestions
                 ? { lat: center.lat, lng: center.lng, type: "custom-points" }
-                : { lat: center.lat, lng: center.lng },
+                : { lat: center.lat, lng: center.lng, type: variant!.value },
         });
         return true;
     };
@@ -93,11 +122,16 @@ export const AddQuestionDialog = ({
         const map = leafletMapContext.get();
         if (!map) return false;
         const center = map.getCenter();
+        const variant = getFirstEnabledDefaultQuestionVariant(
+            "measuring",
+            $disabledDefaultQuestionVariants,
+        );
+        if (!$defaultCustomQuestions && !variant) return false;
         addQuestion({
             id: "measuring",
-            data: defaultCustomQuestions.get()
+            data: $defaultCustomQuestions
                 ? { lat: center.lat, lng: center.lng, type: "custom-measure" }
-                : { lat: center.lat, lng: center.lng },
+                : { lat: center.lat, lng: center.lng, type: variant!.value },
         });
         return true;
     };
@@ -141,50 +175,65 @@ export const AddQuestionDialog = ({
             <DialogContent>
                 <DialogTitle>Add Question</DialogTitle>
                 <DialogDescription>
-                    Select which question type you would like to add.
+                    Select a question family. Its first available variant will
+                    be added.
                 </DialogDescription>
 
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <SidebarMenuButton
-                        onClick={() => {
-                            if (runAddRadius()) setOpen(false);
-                        }}
-                        disabled={$isLoading}
-                    >
-                        Add Radius
-                    </SidebarMenuButton>
-                    <SidebarMenuButton
-                        onClick={() => {
-                            if (runAddThermometer()) setOpen(false);
-                        }}
-                        disabled={$isLoading}
-                    >
-                        Add Thermometer
-                    </SidebarMenuButton>
-                    <SidebarMenuButton
-                        onClick={() => {
-                            if (runAddTentacles()) setOpen(false);
-                        }}
-                        disabled={$isLoading}
-                    >
-                        Add Tentacles
-                    </SidebarMenuButton>
-                    <SidebarMenuButton
-                        onClick={() => {
-                            if (runAddMatching()) setOpen(false);
-                        }}
-                        disabled={$isLoading}
-                    >
-                        Add Matching
-                    </SidebarMenuButton>
-                    <SidebarMenuButton
-                        onClick={() => {
-                            if (runAddMeasuring()) setOpen(false);
-                        }}
-                        disabled={$isLoading}
-                    >
-                        Add Measuring
-                    </SidebarMenuButton>
+                    {!$disabledDefaultQuestionVariants.includes(
+                        "radius:default",
+                    ) && (
+                        <SidebarMenuButton
+                            onClick={() => {
+                                if (runAddRadius()) setOpen(false);
+                            }}
+                            disabled={$isLoading}
+                        >
+                            Add Radius
+                        </SidebarMenuButton>
+                    )}
+                    {!$disabledDefaultQuestionVariants.includes(
+                        "thermometer:default",
+                    ) && (
+                        <SidebarMenuButton
+                            onClick={() => {
+                                if (runAddThermometer()) setOpen(false);
+                            }}
+                            disabled={$isLoading}
+                        >
+                            Add Thermometer
+                        </SidebarMenuButton>
+                    )}
+                    {canAddQuestionFamily("tentacles") && (
+                        <SidebarMenuButton
+                            onClick={() => {
+                                if (runAddTentacles()) setOpen(false);
+                            }}
+                            disabled={$isLoading}
+                        >
+                            Add Tentacles
+                        </SidebarMenuButton>
+                    )}
+                    {canAddQuestionFamily("matching") && (
+                        <SidebarMenuButton
+                            onClick={() => {
+                                if (runAddMatching()) setOpen(false);
+                            }}
+                            disabled={$isLoading}
+                        >
+                            Add Matching
+                        </SidebarMenuButton>
+                    )}
+                    {canAddQuestionFamily("measuring") && (
+                        <SidebarMenuButton
+                            onClick={() => {
+                                if (runAddMeasuring()) setOpen(false);
+                            }}
+                            disabled={$isLoading}
+                        >
+                            Add Measuring
+                        </SidebarMenuButton>
+                    )}
                     <SidebarMenuButton
                         onClick={async () => {
                             const ok = await runPasteQuestion();
