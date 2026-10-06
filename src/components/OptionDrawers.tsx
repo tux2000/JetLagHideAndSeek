@@ -49,6 +49,11 @@ import {
     useCustomStations,
 } from "@/lib/context";
 import {
+    DEFAULT_QUESTION_VARIANTS,
+    type DefaultQuestionVariantFamily,
+    type DefaultQuestionVariantId,
+} from "@/maps/default-question-variants";
+import {
     cn,
     compress,
     decompress,
@@ -57,11 +62,6 @@ import {
     uploadToPastebin,
 } from "@/lib/utils";
 import { OVERPASS_HOSTS } from "@/maps/api/constants";
-import {
-    DEFAULT_QUESTION_VARIANTS,
-    type DefaultQuestionVariantFamily,
-    type DefaultQuestionVariantId,
-} from "@/maps/default-question-variants";
 import { questionsSchema } from "@/maps/schema";
 
 import { LatitudeLongitude } from "./LatLngPicker";

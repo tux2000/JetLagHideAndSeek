@@ -18,8 +18,8 @@ import {
     isLoading,
     leafletMapContext,
 } from "@/lib/context";
-import type { DefaultQuestionVariantFamily } from "@/maps/default-question-variants";
 import { getFirstEnabledDefaultQuestionVariant } from "@/maps/default-question-variants";
+import type { DefaultQuestionVariantFamily } from "@/maps/default-question-variants";
 
 export const AddQuestionDialog = ({
     children,
