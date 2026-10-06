@@ -7,8 +7,8 @@ import { toast } from "react-toastify";
 import {
     additionalMapGeoLocations,
     additionalMapGeoPolygons,
-    mapGeoLocation,
     mapGeoJSON,
+    mapGeoLocation,
     overpassCustomHost,
     overpassHost,
     polyGeoJSON,
@@ -50,6 +50,19 @@ export const getOverpassData = async (
     let response: Response | undefined;
     let lastError: unknown;
 
+    const getRetryDelay = (attempt: number, result?: Response) => {
+        const retryAfter = result?.headers.get("Retry-After");
+        const retryAfterSeconds = Number(retryAfter);
+        const retryAfterDate = retryAfter ? Date.parse(retryAfter) : NaN;
+        const retryAfterMs = Number.isFinite(retryAfterSeconds)
+            ? retryAfterSeconds * 1000
+            : retryAfterDate - Date.now();
+
+        return retryAfterMs > 0
+            ? Math.min(retryAfterMs, 30_000)
+            : Math.min(1000 * 2 ** attempt, 8000);
+    };
+
     const requestFromHost = async (baseUrl: string, retries: number) => {
         for (let attempt = 0; attempt <= retries; attempt++) {
             try {
@@ -60,14 +73,25 @@ export const getOverpassData = async (
                 );
                 response = result;
                 if (result.ok) return result;
+                if (
+                    result.status !== 408 &&
+                    result.status !== 429 &&
+                    result.status < 500
+                ) {
+                    break;
+                }
+                if (attempt < retries) {
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, getRetryDelay(attempt, result)),
+                    );
+                }
             } catch (error) {
                 lastError = error;
-            }
-
-            if (attempt < retries) {
-                await new Promise((resolve) =>
-                    setTimeout(resolve, 500 * (attempt + 1)),
-                );
+                if (attempt < retries) {
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, getRetryDelay(attempt)),
+                    );
+                }
             }
         }
         return undefined;
@@ -115,7 +139,7 @@ export const determineGeoJSON = async (
         N: "node",
     };
     const osmType = osmTypeMap[osmTypeLetter];
-    const query = `[out:json];${osmType}(${osmId});out geom;`;
+    const query = `[out:json][timeout:25];${osmType}(${osmId});out geom qt;`;
     const data = await getOverpassData(
         query,
         "Loading map data...",
@@ -182,10 +206,10 @@ export const findAdminBoundary = async (
     adminLevel: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10,
 ) => {
     const query = `
-[out:json];
+[out:json][timeout:25];
 is_in(${latitude}, ${longitude})->.a;
 rel(pivot.a)["admin_level"="${adminLevel}"];
-out geom;
+out geom qt;
     `;
     const data = await getOverpassData(query, "Determining matching zone...");
     const geo = osmtogeojson(data);
@@ -205,14 +229,14 @@ export const fetchCoastline = async () => {
 export const trainLineNodeFinder = async (node: string): Promise<number[]> => {
     const nodeId = node.split("/")[1];
     const tagQuery = `
-[out:json];
+[out:json][timeout:25];
 node(${nodeId});
 wr(bn);
 out tags;
 `;
     const tagData = await getOverpassData(tagQuery, "Finding train line...");
     const query = `
-[out:json];
+[out:json][timeout:25];
 (
 ${tagData.elements
     .map((element: any) => {
@@ -232,7 +256,7 @@ ${tagData.elements
     })
     .join("\n")}
 );
-out geom;
+out geom qt;
 `;
     const data = await getOverpassData(query, "Finding train lines...");
     const geoJSON = osmtogeojson(data);
@@ -273,7 +297,7 @@ export const findPlacesInZone = async (
     const $polyGeoJSON = polyGeoJSON.get();
     if ($polyGeoJSON) {
         query = `
-[out:json]${timeoutDuration != 0 ? `[timeout:${timeoutDuration}]` : ""};
+[out:json][timeout:${timeoutDuration || 25}];
 (
 ${searchType}${filter}(poly:"${turf
             .getCoords($polyGeoJSON.features)
@@ -356,7 +380,7 @@ out ${outType};
             )
             .join("\n");
         query = `
-        [out:json]${timeoutDuration !== 0 ? `[timeout:${timeoutDuration}]` : ""};
+        [out:json][timeout:${timeoutDuration || 25}];
         ${relationToAreaBlocks}
         (
         ${searchBlocks}
