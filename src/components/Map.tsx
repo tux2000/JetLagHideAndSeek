@@ -5,7 +5,7 @@ import "leaflet-contextmenu";
 import { useStore } from "@nanostores/react";
 import * as turf from "@turf/turf";
 import * as L from "leaflet";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, ScaleControl, TileLayer } from "react-leaflet";
 import { toast } from "react-toastify";
 
@@ -131,6 +131,7 @@ export const Map = ({ className }: { className?: string }) => {
     const $followMe = useStore(followMe);
     const $permanentOverlay = useStore(permanentOverlay);
     const map = useStore(leafletMapContext);
+    const pendingQuestionRefresh = useRef(false);
 
     const followMeMarkerRef = useMemo(
         () => ({ current: null as L.Marker | null }),
@@ -144,8 +145,12 @@ export const Map = ({ className }: { className?: string }) => {
     const refreshQuestions = async (focus: boolean = false) => {
         if (!map) return;
 
-        if ($isLoading) return;
+        if ($isLoading) {
+            pendingQuestionRefresh.current = true;
+            return;
+        }
 
+        pendingQuestionRefresh.current = false;
         isLoading.set(true);
 
         if ($questions.length === 0) {
@@ -459,6 +464,13 @@ export const Map = ({ className }: { className?: string }) => {
 
         refreshQuestions(true);
     }, [$questions, map, $hiderMode]);
+
+    useEffect(() => {
+        if (!$isLoading && pendingQuestionRefresh.current) {
+            pendingQuestionRefresh.current = false;
+            refreshQuestions(true);
+        }
+    }, [$isLoading, $questions, map, $hiderMode]);
 
     useEffect(() => {
         const intervalId = setInterval(async () => {
