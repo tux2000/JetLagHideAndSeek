@@ -95,18 +95,18 @@ export const getOverpassData = async (
     loadingText?: string,
     cacheType: CacheType = CacheType.CACHE,
 ) => {
-    const encodedQuery = encodeURIComponent(query);
-    const allHostUrls = Object.values(OVERPASS_HOSTS);
-    const selectedHost = overpassHost.get();
-    const customUrl = overpassCustomHost.get();
+    const cacheKey = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+    
+    try {
+        const cache = await determineCache(cacheType);
+        const cachedResponse = await cache.match(cacheKey);
+        if (cachedResponse && cachedResponse.ok) {
+            return await cachedResponse.json();
+        }
+    } catch {
+        // Cache not available, proceed with fetch
+    }
 
-    const primaryBaseUrl =
-        selectedHost === "custom"
-            ? customUrl || allHostUrls[0]
-            : selectedHost || allHostUrls[0];
-    const fallbackBaseUrls = allHostUrls.filter((h) => h !== primaryBaseUrl);
-
-    const primaryUrl = `${primaryBaseUrl}?data=${encodedQuery}`;
     let response: Response | undefined;
     let lastError: unknown;
 
@@ -126,16 +126,36 @@ export const getOverpassData = async (
         return Math.min(2000 * Math.pow(2, attempt), 60_000);
     };
 
-    const requestFromHost = async (baseUrl: string, retries: number) => {
+    const fetchWithRetry = async (retries: number) => {
         for (let attempt = 0; attempt <= retries; attempt++) {
             try {
-                const result = await cacheFetch(
-                    `${baseUrl}?data=${encodedQuery}`,
-                    loadingText,
-                    cacheType,
-                );
+                // Use cors-anywhere free CORS proxy service
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+                    `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`
+                )}`;
+
+                const fetchPromise = fetch(proxyUrl, {
+                    headers: {
+                        "User-Agent":
+                            "Mozilla/5.0 (compatible; JetLagHideAndSeek/1.0)",
+                        Accept: "application/json",
+                    },
+                });
+
+                const result = await (loadingText && attempt === 0
+                    ? toast.promise(fetchPromise, { pending: loadingText })
+                    : fetchPromise);
+
                 response = result;
-                if (result.ok) return result;
+                if (result.ok) {
+                    try {
+                        const cache = await determineCache(cacheType);
+                        await cache.put(cacheKey, result.clone());
+                    } catch {
+                        // Cache not available, but response is still usable
+                    }
+                    return result;
+                }
                 if (
                     result.status !== 408 &&
                     result.status !== 429 &&
@@ -160,27 +180,12 @@ export const getOverpassData = async (
         return undefined;
     };
 
-    let successfulResponse = await requestFromHost(primaryBaseUrl, 3);
-
-    if (!successfulResponse) {
-        for (const fallbackBase of fallbackBaseUrls) {
-            successfulResponse = await requestFromHost(fallbackBase, 0);
-            if (successfulResponse) {
-                try {
-                    const cache = await determineCache(cacheType);
-                    await cache.put(primaryUrl, successfulResponse.clone());
-                } catch {
-                    // The fallback response is still usable without caching.
-                }
-                break;
-            }
-        }
-    }
+    const successfulResponse = await fetchWithRetry(3);
 
     if (!successfulResponse) {
         const errorMessage = response
             ? `Could not load data from Overpass: ${response.status} ${response.statusText}`
-            : "Could not connect to any Overpass server";
+            : "Could not connect to Overpass server";
         if (lastError) console.error("Overpass request failed:", lastError);
         toast.error(errorMessage, {
             toastId: "overpass-error",
