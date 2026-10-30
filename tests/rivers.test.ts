@@ -154,7 +154,33 @@ test("same-water matching distinguishes lakes from rivers", () => {
     expect(isSameRiver(nearLake, nearRiver)).toBe(false);
 });
 
-test("water query selects river ways and lake ways/relations", () => {
-    expect(RIVER_SELECTOR).toBe('way["waterway"="river"]');
-    expect(LAKE_SELECTOR).toBe('wr["natural"="water"]["water"="lake"]');
+test("water query selects named river ways and lake ways/relations", () => {
+    expect(RIVER_SELECTOR).toBe('way["waterway"="river"]["name"]');
+    expect(LAKE_SELECTOR).toBe(
+        'wr["natural"="water"]["water"="lake"]["name"]',
+    );
+});
+
+test("water lines are simplified to within 10 m of the original", () => {
+    // A wiggly river at 60°N with ~2 m wiggles every ~5 m.
+    const original = Array.from({ length: 2000 }, (_, i) => [
+        10 + i * 0.0001,
+        60 + (i % 2) * 0.00002 + Math.sin(i / 50) * 0.002,
+    ]);
+    const river = turf.lineString(original, { name: "Wiggly" }, { id: 7 });
+
+    const [simplified] = waterFeaturesToLines([river]).features;
+
+    expect(simplified.id).toBe(7);
+    expect(simplified.properties?.name).toBe("Wiggly");
+    expect(simplified.geometry.coordinates.length).toBeLessThan(
+        original.length / 4,
+    );
+    for (const coordinate of original) {
+        expect(
+            turf.pointToLineDistance(turf.point(coordinate), simplified, {
+                units: "meters",
+            }),
+        ).toBeLessThanOrEqual(10);
+    }
 });

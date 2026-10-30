@@ -16,14 +16,16 @@ import { findPlacesInZone } from "@/maps/api";
 export type RiverLine = Feature<LineString>;
 export type RiverLines = FeatureCollection<LineString>;
 
-export const RIVER_SELECTOR = 'way["waterway"="river"]';
+// Only named water counts; unnamed ponds and mis-tagged fragments otherwise
+// add a lot of geometry and "ghost" water.
+export const RIVER_SELECTOR = 'way["waterway"="river"]["name"]';
 // Large lakes are usually multipolygon relations, so relations are included.
-export const LAKE_SELECTOR = 'wr["natural"="water"]["water"="lake"]';
+export const LAKE_SELECTOR = 'wr["natural"="water"]["water"="lake"]["name"]';
 
 /**
  * Normalizes OSM water features to lines: rivers stay as-is and lakes are
  * represented by their shorelines, so distance and identity checks apply to
- * both.
+ * both. All lines are simplified to within 10 m of the original.
  */
 export const waterFeaturesToLines = (
     features: Feature<Geometry | null>[],
@@ -31,41 +33,55 @@ export const waterFeaturesToLines = (
     type: "FeatureCollection",
     features: features.flatMap((feature): RiverLine[] => {
         const geometry = feature.geometry;
-        if (geometry?.type === "LineString") return [feature as RiverLine];
-        if (geometry?.type !== "Polygon" && geometry?.type !== "MultiPolygon") {
+        let lines: RiverLine[];
+        if (geometry?.type === "LineString") {
+            lines = [feature as RiverLine];
+        } else if (
+            geometry?.type === "Polygon" ||
+            geometry?.type === "MultiPolygon"
+        ) {
+            const shoreline = turf.polygonToLine(
+                feature as Feature<Polygon | MultiPolygon>,
+            );
+            lines = turf
+                .flatten(
+                    shoreline as FeatureCollection<
+                        LineString | MultiLineString
+                    >,
+                )
+                .features.filter(
+                    (line): line is RiverLine =>
+                        line.geometry.type === "LineString",
+                );
+        } else {
             return [];
         }
 
-        const shoreline = turf.polygonToLine(
-            feature as Feature<Polygon | MultiPolygon>,
-        );
-        return turf
-            .flatten(shoreline as FeatureCollection<LineString | MultiLineString>)
-            .features.flatMap((line): RiverLine[] => {
-                if (line.geometry.type !== "LineString") return [];
-                const simplified = simplifyShoreline(line as RiverLine);
-                return simplified
-                    ? [
-                          {
-                              ...simplified,
-                              id: feature.id,
-                              properties: feature.properties ?? {},
-                          },
-                      ]
-                    : [];
-            });
+        return lines.flatMap((line): RiverLine[] => {
+            const simplified = simplifyWaterLine(line);
+            return simplified
+                ? [
+                      {
+                          ...simplified,
+                          id: feature.id,
+                          properties: feature.properties ?? {},
+                      },
+                  ]
+                : [];
+        });
     }),
 });
 
-// ~20 m in latitude (less in longitude); detailed lake shorelines otherwise
-// make distance, buffer and rendering work very slow in lake-rich regions.
-export const SHORELINE_SIMPLIFY_TOLERANCE_DEGREES = 0.0002;
+// 10 m expressed in degrees of latitude. A degree of longitude is never
+// longer than one of latitude, so simplified lines stay within 10 m of the
+// original geometry while distance, buffer and rendering work get much cheaper.
+export const WATER_SIMPLIFY_TOLERANCE_DEGREES = 10 / 111_320;
 
-const simplifyShoreline = (line: RiverLine): RiverLine | null => {
+const simplifyWaterLine = (line: RiverLine): RiverLine | null => {
     let simplified: RiverLine;
     try {
         simplified = turf.simplify(line, {
-            tolerance: SHORELINE_SIMPLIFY_TOLERANCE_DEGREES,
+            tolerance: WATER_SIMPLIFY_TOLERANCE_DEGREES,
         });
     } catch {
         simplified = line;
