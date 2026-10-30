@@ -47,13 +47,9 @@ export const cacheFetch = async (
         }
 
         const fetchAndMaybeCache = async () => {
-            const response = await fetch(url, {
-                headers: {
-                    "User-Agent":
-                        "Mozilla/5.0 (compatible; JetLagHideAndSeek/1.0)",
-                    Accept: "application/json",
-                },
-            });
+            // Keep this a CORS "simple request": custom headers (e.g. User-Agent)
+            // trigger a preflight that Overpass servers reject.
+            const response = await fetch(url);
             if (response.ok) {
                 await cache.put(url, response.clone());
             } else {
@@ -79,13 +75,7 @@ export const cacheFetch = async (
     } catch (e) {
         console.log(e); // Probably a caches not supported error
 
-        return fetch(url, {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (compatible; JetLagHideAndSeek/1.0)",
-                Accept: "application/json",
-            },
-        });
+        return fetch(url);
     }
 };
 
