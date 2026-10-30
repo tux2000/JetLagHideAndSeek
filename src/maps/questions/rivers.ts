@@ -41,16 +41,44 @@ export const waterFeaturesToLines = (
         );
         return turf
             .flatten(shoreline as FeatureCollection<LineString | MultiLineString>)
-            .features.filter(
-                (line): line is RiverLine => line.geometry.type === "LineString",
-            )
-            .map((line) => ({
-                ...line,
-                id: feature.id,
-                properties: feature.properties ?? {},
-            }));
+            .features.flatMap((line): RiverLine[] => {
+                if (line.geometry.type !== "LineString") return [];
+                const simplified = simplifyShoreline(line as RiverLine);
+                return simplified
+                    ? [
+                          {
+                              ...simplified,
+                              id: feature.id,
+                              properties: feature.properties ?? {},
+                          },
+                      ]
+                    : [];
+            });
     }),
 });
+
+// ~20 m in latitude (less in longitude); detailed lake shorelines otherwise
+// make distance, buffer and rendering work very slow in lake-rich regions.
+export const SHORELINE_SIMPLIFY_TOLERANCE_DEGREES = 0.0002;
+
+const simplifyShoreline = (line: RiverLine): RiverLine | null => {
+    let simplified: RiverLine;
+    try {
+        simplified = turf.simplify(line, {
+            tolerance: SHORELINE_SIMPLIFY_TOLERANCE_DEGREES,
+        });
+    } catch {
+        simplified = line;
+    }
+    const coordinates = simplified.geometry.coordinates.filter(
+        (coordinate) =>
+            coordinate.length >= 2 &&
+            Number.isFinite(coordinate[0]) &&
+            Number.isFinite(coordinate[1]),
+    );
+    const distinct = new Set(coordinates.map((c) => `${c[0]},${c[1]}`));
+    return distinct.size >= 2 ? turf.lineString(coordinates) : null;
+};
 
 export const findRiversInZone = async (): Promise<RiverLines> => {
     const data = await findPlacesInZone(
