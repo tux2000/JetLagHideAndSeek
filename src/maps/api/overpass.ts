@@ -20,7 +20,7 @@ import {
 } from "@/lib/context";
 import { combineAreaPolygons, safeUnion } from "@/maps/geo-utils";
 
-import { cacheFetch, determineCache } from "./cache";
+import { cacheFetch } from "./cache";
 import { LOCATION_FIRST_TAG, OVERPASS_HOSTS } from "./constants";
 import type {
     EncompassingTentacleQuestionSchema,
@@ -100,13 +100,13 @@ export const getOverpassData = async (
     const selectedHost = overpassHost.get();
     const customUrl = overpassCustomHost.get();
 
-    const primaryBaseUrl =
+    // Only ever use the user-selected host: automatically spreading load over
+    // other public Overpass servers violates their usage policy.
+    const baseUrl =
         selectedHost === "custom"
             ? customUrl || allHostUrls[0]
             : selectedHost || allHostUrls[0];
-    const fallbackBaseUrls = allHostUrls.filter((h) => h !== primaryBaseUrl);
 
-    const primaryUrl = `${primaryBaseUrl}?data=${encodedQuery}`;
     let response: Response | undefined;
     let lastError: unknown;
 
@@ -126,7 +126,7 @@ export const getOverpassData = async (
         return Math.min(2000 * Math.pow(2, attempt), 60_000);
     };
 
-    const requestFromHost = async (baseUrl: string, retries: number) => {
+    const requestWithRetry = async (retries: number) => {
         for (let attempt = 0; attempt <= retries; attempt++) {
             try {
                 const result = await cacheFetch(
@@ -160,27 +160,12 @@ export const getOverpassData = async (
         return undefined;
     };
 
-    let successfulResponse = await requestFromHost(primaryBaseUrl, 3);
-
-    if (!successfulResponse) {
-        for (const fallbackBase of fallbackBaseUrls) {
-            successfulResponse = await requestFromHost(fallbackBase, 0);
-            if (successfulResponse) {
-                try {
-                    const cache = await determineCache(cacheType);
-                    await cache.put(primaryUrl, successfulResponse.clone());
-                } catch {
-                    // The fallback response is still usable without caching.
-                }
-                break;
-            }
-        }
-    }
+    const successfulResponse = await requestWithRetry(3);
 
     if (!successfulResponse) {
         const errorMessage = response
             ? `Could not load data from Overpass: ${response.status} ${response.statusText}`
-            : "Could not connect to any Overpass server";
+            : "Could not connect to the Overpass server";
         if (lastError) console.error("Overpass request failed:", lastError);
         toast.error(errorMessage, {
             toastId: "overpass-error",

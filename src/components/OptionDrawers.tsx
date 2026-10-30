@@ -737,9 +737,8 @@ export const OptionDrawers = ({ className }: { className?: string }) => {
                                 </div>
                             )}
                             <p className="text-xs text-gray-500 text-center">
-                                {$overpassHost === "custom"
-                                    ? "The other hosts will be used as fallbacks if this one fails."
-                                    : "The remaining hosts will be tried as fallbacks if the selected one fails."}
+                                Only the selected host is used. If it fails,
+                                switch hosts manually.
                             </p>
                             <Separator className="bg-slate-300 w-[280px]" />
                             <Label>Permanent Map Overlay</Label>
