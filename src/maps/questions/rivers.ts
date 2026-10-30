@@ -9,6 +9,8 @@ import type {
     Point,
     Polygon,
 } from "geojson";
+// @ts-expect-error No type declaration
+import { geoVoronoi } from "d3-geo-voronoi";
 import osmtogeojson from "osmtogeojson";
 
 import { findPlacesInZone } from "@/maps/api";
@@ -169,93 +171,119 @@ export const riverRegionFor = (
     const nearest = nearestRiverAt(point, rivers);
     if (!nearest) return turf.featureCollection([]);
 
-    const groups = new Map<string, RiverLine[]>();
-    for (const feature of turf.flatten(rivers).features) {
-        if (feature.geometry.type !== "LineString") continue;
-        const river = feature as RiverLine;
-        const identity = riverIdentity(river)[0];
-        if (!identity) continue;
-        const group = groups.get(identity) ?? [];
-        group.push(river);
-        groups.set(identity, group);
-    }
+    const sites = riverVoronoiSites(rivers, bounds);
+    if (sites.length === 0) return turf.featureCollection([]);
 
-    const groupLengths = Array.from(groups, ([identity, features]) => ({
-        identity,
-        features: features.map((feature) => ({
-            feature,
-            length: turf.length(feature, { units: "kilometers" }),
-        })),
-    })).map((group) => ({
-        ...group,
-        totalLength: group.features.reduce((sum, line) => sum + line.length, 0),
-    }));
-    const totalLength = groupLengths.reduce(
-        (sum, group) => sum + group.totalLength,
+    const targetIdentities = new Set(nearest.identities);
+    const cells = (
+        geoVoronoi()(
+            turf.featureCollection(sites),
+        ).polygons() as FeatureCollection<
+            Polygon,
+            { site: Feature<Point, { riverIdentity: string }> }
+        >
+    ).features.filter(
+        (cell) =>
+            cell.geometry &&
+            targetIdentities.has(cell.properties.site.properties.riverIdentity),
+    );
+    if (cells.length === 0) return turf.featureCollection([]);
+
+    // Neighbouring cells of the same water share edges, so merging them here
+    // keeps later map operations cheap.
+    const merged =
+        cells.length === 1
+            ? cells[0]
+            : turf.union(turf.featureCollection(cells));
+    return turf.featureCollection(merged ? [merged] : []);
+};
+
+// Upper bound on Voronoi sites; denser sites tell close waters apart better.
+const MAX_VORONOI_SITES = 50_000;
+const MIN_SITE_SPACING_KM = 0.1;
+
+/**
+ * Points sampled along all named water, at most ~100 m apart, plus an unnamed
+ * frame around the game area so that every water cell stays local. The
+ * region is then accurate to about half the spacing next to the water.
+ */
+const riverVoronoiSites = (
+    rivers: RiverLines,
+    bounds: [number, number, number, number],
+): Feature<Point, { riverIdentity: string }>[] => {
+    const named = turf
+        .flatten(rivers)
+        .features.filter(
+            (feature): feature is RiverLine =>
+                feature.geometry.type === "LineString",
+        )
+        .map((line) => ({ line, identity: riverIdentity(line)[0] }))
+        .filter(({ identity }) => identity);
+
+    const totalLength = named.reduce(
+        (sum, { line }) => sum + turf.length(line, { units: "kilometers" }),
         0,
     );
-    const sampleBudget = 2500;
-    const sampleSpacing = Math.max(
-        2,
-        totalLength / Math.max(1, sampleBudget - groupLengths.length),
+    const spacing = Math.max(
+        MIN_SITE_SPACING_KM,
+        totalLength / MAX_VORONOI_SITES,
     );
-    const sites = turf.points([]);
 
-    for (const group of groupLengths) {
-        if (group.totalLength <= 0) continue;
-        const sampleCount = Math.max(
-            1,
-            Math.ceil(group.totalLength / sampleSpacing),
-        );
-
-        for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-            let remainingDistance =
-                ((sampleIndex + 0.5) / sampleCount) * group.totalLength;
-            let samplePoint: Feature<Point> | null = null;
-
-            for (const line of group.features) {
-                if (remainingDistance <= line.length) {
-                    samplePoint = turf.along(line.feature, remainingDistance, {
-                        units: "kilometers",
-                    });
-                    break;
-                }
-                remainingDistance -= line.length;
-            }
-
-            if (samplePoint) {
-                sites.features.push(
-                    turf.point(samplePoint.geometry.coordinates, {
-                        riverIdentity: group.identity,
-                    }),
+    const sites: Feature<Point, { riverIdentity: string }>[] = [];
+    for (const { line, identity } of named) {
+        const coordinates = line.geometry.coordinates;
+        const properties = { riverIdentity: identity };
+        sites.push(turf.point(coordinates[0], properties));
+        let sinceLastSite = 0;
+        for (let i = 1; i < coordinates.length; i++) {
+            const from = coordinates[i - 1];
+            const to = coordinates[i];
+            const segment = turf.distance(from, to, { units: "kilometers" });
+            let along = spacing - sinceLastSite;
+            while (along < segment) {
+                const t = along / segment;
+                sites.push(
+                    turf.point(
+                        [
+                            from[0] + (to[0] - from[0]) * t,
+                            from[1] + (to[1] - from[1]) * t,
+                        ],
+                        properties,
+                    ),
                 );
+                along += spacing;
             }
+            sinceLastSite = segment - (along - spacing);
+        }
+        sites.push(turf.point(coordinates[coordinates.length - 1], properties));
+    }
+    if (sites.length === 0) return sites;
+
+    const [minX, minY, maxX, maxY] = bounds;
+    const padX = Math.max((maxX - minX) / 2, 0.1);
+    const padY = Math.max((maxY - minY) / 2, 0.1);
+    const frame = { riverIdentity: "" };
+    for (let i = 0; i <= 8; i++) {
+        const x = minX - padX + ((maxX - minX + 2 * padX) * i) / 8;
+        const y = minY - padY + ((maxY - minY + 2 * padY) * i) / 8;
+        sites.push(
+            turf.point([x, minY - padY], frame),
+            turf.point([x, maxY + padY], frame),
+        );
+        if (i > 0 && i < 8) {
+            sites.push(
+                turf.point([minX - padX, y], frame),
+                turf.point([maxX + padX, y], frame),
+            );
         }
     }
 
-    if (sites.features.length === 0) return turf.featureCollection([]);
-    if (sites.features.length === 1) {
-        return turf.featureCollection([turf.bboxPolygon(bounds)]);
-    }
-
-    const projectedSites = turf.toMercator(sites);
-    const projectedBounds = turf.bbox(
-        turf.toMercator(turf.bboxPolygon(bounds)),
-        { recompute: true },
-    );
-    const projectedVoronoi = turf.voronoi(projectedSites, {
-        bbox: projectedBounds,
+    // Adjacent ways share end points; duplicate sites yield empty cells.
+    const seen = new Set<string>();
+    return sites.filter((site) => {
+        const key = site.geometry.coordinates.join(",");
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
     });
-    if (!projectedVoronoi) return turf.featureCollection([]);
-
-    projectedVoronoi.features = projectedVoronoi.features.filter(
-        (feature) => feature?.geometry !== null,
-    );
-    const voronoi = turf.toWgs84(projectedVoronoi);
-    const targetIdentities = new Set(nearest.identities);
-    const matchingCells = voronoi.features.filter((cell: any) =>
-        targetIdentities.has(cell.properties?.riverIdentity),
-    );
-
-    return turf.featureCollection(matchingCells);
 };
