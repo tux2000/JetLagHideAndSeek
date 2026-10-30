@@ -146,7 +146,8 @@ export const MeasuringQuestionComponent = ({
         case "river":
             questionSpecific = (
                 <span className="px-2 text-center text-orange-500">
-                    Measures distance to the nearest mapped river.
+                    Measures distance to the nearest mapped river or lake
+                    shoreline.
                 </span>
             );
             break;

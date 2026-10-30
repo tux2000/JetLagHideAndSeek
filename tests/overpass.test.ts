@@ -64,3 +64,36 @@ test("excluded areas use the representative center of geometry-only ways", () =>
         ),
     ).toBe(true);
 });
+
+test("lake relations use member geometry for drawn and excluded areas", () => {
+    const boundary = turf.polygon([
+        [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 2],
+            [0, 0],
+        ],
+    ]);
+    const lakeRelation = (offset: number) => ({
+        members: [
+            {
+                geometry: [
+                    { lat: offset + 0.5, lon: offset + 0.5 },
+                    { lat: offset + 0.5, lon: offset + 1.5 },
+                    { lat: offset + 1.5, lon: offset + 1.5 },
+                    { lat: offset + 0.5, lon: offset + 0.5 },
+                ],
+            },
+        ],
+    });
+
+    expect(osmElementIntersectsBoundary(lakeRelation(0), boundary)).toBe(true);
+    expect(osmElementIntersectsBoundary(lakeRelation(5), boundary)).toBe(false);
+    expect(osmElementCenterWithinBoundary(lakeRelation(0), boundary)).toBe(
+        true,
+    );
+    expect(osmElementCenterWithinBoundary(lakeRelation(5), boundary)).toBe(
+        false,
+    );
+});

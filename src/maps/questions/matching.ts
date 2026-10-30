@@ -155,7 +155,9 @@ export const determineMatchingBoundary = _.memoize(
                     turf.bbox(gameArea),
                 );
                 if (region.features.length === 0) {
-                    toast.error("No named rivers found in this game area");
+                    toast.error(
+                        "No named rivers or lakes found in this game area",
+                    );
                     return false;
                 }
                 boundary = region;

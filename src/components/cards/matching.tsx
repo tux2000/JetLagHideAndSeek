@@ -134,8 +134,9 @@ export const MatchingQuestionComponent = ({
         case "river":
             questionSpecific = (
                 <span className="px-2 text-center text-orange-500">
-                    Compares the nearest named river to each player using
-                    OpenStreetMap river data.
+                    Compares the nearest named river or lake to each player
+                    using OpenStreetMap data (waterway=river and
+                    natural=water + water=lake).
                 </span>
             );
             break;

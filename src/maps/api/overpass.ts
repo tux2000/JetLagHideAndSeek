@@ -35,29 +35,45 @@ type TentacleLocationQuery = Pick<
     "lat" | "lng" | "radius" | "unit" | "locationType"
 >;
 
+type OsmCoordinate = { lat?: number; lon?: number };
+
 type OsmElementGeometry = {
     center?: { lat?: number; lon?: number };
     lat?: number;
     lon?: number;
-    geometry?: { lat?: number; lon?: number }[];
+    geometry?: OsmCoordinate[];
+    // Relations fetched with `out geom` carry geometry on their members.
+    members?: { geometry?: OsmCoordinate[] }[];
 };
+
+const osmElementLines = (element: OsmElementGeometry) =>
+    [
+        element.geometry,
+        ...(element.members ?? []).map((member) => member.geometry),
+    ]
+        .map((geometry) =>
+            (geometry ?? [])
+                .filter(
+                    (coordinate) =>
+                        typeof coordinate.lon === "number" &&
+                        typeof coordinate.lat === "number",
+                )
+                .map((coordinate) => [coordinate.lon!, coordinate.lat!]),
+        )
+        .filter((line) => line.length >= 2);
 
 export const osmElementIntersectsBoundary = (
     element: OsmElementGeometry,
     boundary: Feature<Polygon | MultiPolygon>,
 ) => {
-    const coordinates = (element.geometry ?? [])
-        .filter(
-            (coordinate) =>
-                typeof coordinate.lon === "number" &&
-                typeof coordinate.lat === "number",
-        )
-        .map((coordinate) => [coordinate.lon!, coordinate.lat!]);
-    if (coordinates.length >= 2) {
-        return turf.booleanIntersects(turf.lineString(coordinates), boundary);
+    const lines = osmElementLines(element);
+    if (lines.length > 0) {
+        return lines.some((line) =>
+            turf.booleanIntersects(turf.lineString(line), boundary),
+        );
     }
 
-    const point = osmElementCenterPoint(element, coordinates);
+    const point = osmElementCenterPoint(element, lines);
     return point ? turf.booleanPointInPolygon(point, boundary) : false;
 };
 
@@ -65,20 +81,13 @@ export const osmElementCenterWithinBoundary = (
     element: OsmElementGeometry,
     boundary: Feature<Polygon | MultiPolygon>,
 ) => {
-    const coordinates = (element.geometry ?? [])
-        .filter(
-            (coordinate) =>
-                typeof coordinate.lon === "number" &&
-                typeof coordinate.lat === "number",
-        )
-        .map((coordinate) => [coordinate.lon!, coordinate.lat!]);
-    const point = osmElementCenterPoint(element, coordinates);
+    const point = osmElementCenterPoint(element, osmElementLines(element));
     return point ? turf.booleanPointInPolygon(point, boundary) : false;
 };
 
 const osmElementCenterPoint = (
     element: OsmElementGeometry,
-    coordinates: number[][],
+    lines: number[][][],
 ) => {
     const longitude = element.center?.lon ?? element.lon;
     const latitude = element.center?.lat ?? element.lat;
@@ -86,8 +95,8 @@ const osmElementCenterPoint = (
         return turf.point([longitude, latitude]);
     }
 
-    if (coordinates.length < 2) return null;
-    return turf.center(turf.lineString(coordinates));
+    if (lines.length === 0) return null;
+    return turf.center(turf.multiLineString(lines));
 };
 
 export const getOverpassData = async (
@@ -328,7 +337,10 @@ out geom qt;
 export const findPlacesInZone = async (
     filter: string,
     loadingText?: string,
+    // "" means the filter and alternatives carry their own element type,
+    // e.g. 'way["waterway"="river"]'.
     searchType:
+        | ""
         | "node"
         | "way"
         | "relation"

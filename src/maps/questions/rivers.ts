@@ -1,5 +1,14 @@
 import * as turf from "@turf/turf";
-import type { Feature, FeatureCollection, LineString, Point } from "geojson";
+import type {
+    Feature,
+    FeatureCollection,
+    Geometry,
+    LineString,
+    MultiLineString,
+    MultiPolygon,
+    Point,
+    Polygon,
+} from "geojson";
 import osmtogeojson from "osmtogeojson";
 
 import { findPlacesInZone } from "@/maps/api";
@@ -7,24 +16,53 @@ import { findPlacesInZone } from "@/maps/api";
 export type RiverLine = Feature<LineString>;
 export type RiverLines = FeatureCollection<LineString>;
 
+export const RIVER_SELECTOR = 'way["waterway"="river"]';
+// Large lakes are usually multipolygon relations, so relations are included.
+export const LAKE_SELECTOR = 'wr["natural"="water"]["water"="lake"]';
+
+/**
+ * Normalizes OSM water features to lines: rivers stay as-is and lakes are
+ * represented by their shorelines, so distance and identity checks apply to
+ * both.
+ */
+export const waterFeaturesToLines = (
+    features: Feature<Geometry | null>[],
+): RiverLines => ({
+    type: "FeatureCollection",
+    features: features.flatMap((feature): RiverLine[] => {
+        const geometry = feature.geometry;
+        if (geometry?.type === "LineString") return [feature as RiverLine];
+        if (geometry?.type !== "Polygon" && geometry?.type !== "MultiPolygon") {
+            return [];
+        }
+
+        const shoreline = turf.polygonToLine(
+            feature as Feature<Polygon | MultiPolygon>,
+        );
+        return turf
+            .flatten(shoreline as FeatureCollection<LineString | MultiLineString>)
+            .features.filter(
+                (line): line is RiverLine => line.geometry.type === "LineString",
+            )
+            .map((line) => ({
+                ...line,
+                id: feature.id,
+                properties: feature.properties ?? {},
+            }));
+    }),
+});
+
 export const findRiversInZone = async (): Promise<RiverLines> => {
     const data = await findPlacesInZone(
-        '["waterway"="river"]',
-        "Finding rivers...",
-        "way",
+        RIVER_SELECTOR,
+        "Finding rivers and lakes...",
+        "",
         "geom",
-        [],
+        [LAKE_SELECTOR],
         60,
     );
-    const geojson = osmtogeojson(data);
 
-    return {
-        type: "FeatureCollection",
-        features: geojson.features.filter(
-            (feature): feature is RiverLine =>
-                feature.geometry?.type === "LineString",
-        ),
-    };
+    return waterFeaturesToLines(osmtogeojson(data).features);
 };
 
 const riverIdentity = (river: RiverLine) => {
