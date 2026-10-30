@@ -118,9 +118,12 @@ export const getOverpassData = async (
             ? retryAfterSeconds * 1000
             : retryAfterDate - Date.now();
 
-        return retryAfterMs > 0
-            ? Math.min(retryAfterMs, 30_000)
-            : Math.min(1000 * 2 ** attempt, 8000);
+        if (retryAfterMs > 0) {
+            return Math.min(retryAfterMs, 60_000);
+        }
+
+        // Exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s max
+        return Math.min(2000 * Math.pow(2, attempt), 60_000);
     };
 
     const requestFromHost = async (baseUrl: string, retries: number) => {
@@ -157,7 +160,7 @@ export const getOverpassData = async (
         return undefined;
     };
 
-    let successfulResponse = await requestFromHost(primaryBaseUrl, 1);
+    let successfulResponse = await requestFromHost(primaryBaseUrl, 3);
 
     if (!successfulResponse) {
         for (const fallbackBase of fallbackBaseUrls) {

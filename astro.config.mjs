@@ -50,3 +50,4 @@ export default defineConfig({
     site: "https://tux2000.github.io",
     base: "JetLagHideAndSeek",
 });
+

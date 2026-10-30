@@ -47,7 +47,13 @@ export const cacheFetch = async (
         }
 
         const fetchAndMaybeCache = async () => {
-            const response = await fetch(url);
+            const response = await fetch(url, {
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0 (compatible; JetLagHideAndSeek/1.0)",
+                    Accept: "application/json",
+                },
+            });
             if (response.ok) {
                 await cache.put(url, response.clone());
             } else {
@@ -73,7 +79,13 @@ export const cacheFetch = async (
     } catch (e) {
         console.log(e); // Probably a caches not supported error
 
-        return fetch(url);
+        return fetch(url, {
+            headers: {
+                "User-Agent":
+                    "Mozilla/5.0 (compatible; JetLagHideAndSeek/1.0)",
+                Accept: "application/json",
+            },
+        });
     }
 };
 
